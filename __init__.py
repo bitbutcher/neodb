@@ -6,9 +6,9 @@ from google.appengine.ext import ndb
 from google.appengine.ext.ndb import polymodel
 from google.appengine.datastore.datastore_query import Cursor
 
-from neodb import keygen
-from neodb import mutex
-from neodb.plurals import singularize
+from . import keygen
+from . import mutex
+from .plurals import singularize
 
 
 def _list_or_args(items):
@@ -116,9 +116,9 @@ def memoized(func):
 
 class ModelMixin(object):
 
-    created = ndb.DateTimeProperty(auto_now_add=True, indexed=True)
+    created_at = ndb.DateTimeProperty(auto_now_add=True, indexed=True)
 
-    updated = ndb.DateTimeProperty(auto_now=True, indexed=True)
+    updated_at = ndb.DateTimeProperty(auto_now=True, indexed=True)
 
     def update_attributes(self, **kwargs):
         self.populate(**kwargs)
@@ -166,13 +166,15 @@ class ModelMixin(object):
         return cls.properties()
 
     @classmethod
-    def for_id(cls, id, parent=None, key_only=False):
-        if id is None:
+    def for_id(cls, id, parent=None, key_only=False, use_cache=True):
+        try:
+            key = ndb.Key(cls, id, parent=as_key(parent)) or \
+                ndb.Key(cls, int(id), parent=as_key(parent))
+            if key_only:
+                return key
+            return key.get(use_cache=use_cache)
+        except ValueError as e:
             return None
-        key = Key(pairs=[(cls, id)], parent=as_key(parent))
-        if key_only:
-            return key
-        return key.get()
 
     @classmethod
     def empty_query(cls):
@@ -190,19 +192,11 @@ class ModelMixin(object):
         it.put()
         return it
 
-    @classmethod
-    def for_id(cls, id, parent=None, use_cache=True):
-        try:
-            return ndb.Key(cls, id, parent=as_key(parent)).get(use_cache=use_cache) or \
-                ndb.Key(cls, int(id), parent=as_key(parent)).get(use_cache=use_cache)
-        except ValueError as e:
-            return None
-
 
 class Model(ndb.Model, ModelMixin):
 
     def _prepare_for_put(self):
-        self._is_new = self.created is None
+        self._is_new = self.created_at is None
         super(Model, self)._prepare_for_put()
 
     def _post_put_hook(self, future):
@@ -223,7 +217,7 @@ class Model(ndb.Model, ModelMixin):
 class PolyModel(polymodel.PolyModel, ModelMixin):
 
     def _prepare_for_put(self):
-        self._is_new = self.created is None
+        self._is_new = self.created_at is None
         super(Model, self)._prepare_for_put()
 
     def _post_put_hook(self, future):
